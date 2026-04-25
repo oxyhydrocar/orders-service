@@ -5,7 +5,6 @@ import { Order, OrderItem, OrderStatus, OrderCreatedEvent } from "../types/share
 
 export const ordersRouter = Router();
 
-// ─── GET /orders/:id ──────────────────────────────────────────────────────────
 ordersRouter.get("/:id", async (req: Request, res: Response) => {
   const [order] = await query<{
     id: string;
@@ -32,7 +31,7 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
     id: order.id,
     customerId: order.customer_id,
     items,
-    totalAmount: parseFloat(order.total_amount),  // field is totalAmount
+    totalAmount: parseFloat(order.total_amount),
     status: order.status,
     createdAt: order.created_at,
     updatedAt: order.updated_at,
@@ -41,7 +40,6 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
   return res.json(response);
 });
 
-// ─── POST /orders ─────────────────────────────────────────────────────────────
 ordersRouter.post("/", async (req: Request, res: Response) => {
   const { customerId, items } = req.body as {
     customerId: string;
@@ -65,13 +63,10 @@ ordersRouter.post("/", async (req: Request, res: Response) => {
     );
   }
 
-  // Publish event — payments-service subscribes to this topic.
-  // BUG SURFACE: event shape changed (userId → customerId) but payments-service
-  // still destructures `event.userId`. Any event-driven payment flow is broken.
   const event: OrderCreatedEvent = {
     eventType: "order.created",
     orderId,
-    customerId,        // was: userId — payments-service reads event.userId (undefined)
+    customerId,
     totalAmount,
     items: items.map(i => ({
       productId: i.productId,
@@ -83,12 +78,10 @@ ordersRouter.post("/", async (req: Request, res: Response) => {
   };
 
   console.log("[orders-service] event published:", JSON.stringify(event));
-  // In production this would go to Kafka/SQS. For demo, we log it.
 
   return res.status(201).json({ orderId, status: "AWAITING_PAYMENT" });
 });
 
-// ─── PATCH /orders/:id/status ─────────────────────────────────────────────────
 ordersRouter.patch("/:id/status", async (req: Request, res: Response) => {
   const { status } = req.body as { status: OrderStatus };
 

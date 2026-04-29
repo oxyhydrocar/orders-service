@@ -101,3 +101,20 @@ ordersRouter.patch("/:id/status", async (req: Request, res: Response) => {
 
   return res.json({ orderId: req.params.id, status });
 });
+
+ordersRouter.delete("/:id", async (req: Request, res: Response) => {
+  const [order] = await query<{ id: string; status: OrderStatus }>(
+    `SELECT id, status FROM orders WHERE id = $1`,
+    [req.params.id]
+  );
+
+  if (!order) return res.status(404).json({ error: "Order not found" });
+
+  if (order.status !== "AWAITING_PAYMENT" && order.status !== "CANCELLED") {
+    return res.status(409).json({ error: "Only orders in AWAITING_PAYMENT or CANCELLED state can be deleted" });
+  }
+
+  await query(`DELETE FROM orders WHERE id = $1`, [req.params.id]);
+
+  return res.status(204).send();
+});

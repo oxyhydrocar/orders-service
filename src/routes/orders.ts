@@ -21,11 +21,11 @@ ordersRouter.get("/:id", async (req: Request, res: Response) => {
 
   if (!order) return res.status(404).json({ error: "Order not found" });
 
-  const items = await query<OrderItem>(
-    `SELECT product_id as "productId", name, quantity, unit_price as "unitPrice"
-     FROM order_items WHERE order_id = $1`,
-    [order.id]
+  const allItems = await query<OrderItem & { orderId: string }>(
+    `SELECT order_id as "orderId", product_id as "productId", name, quantity, unit_price as "unitPrice"
+     FROM order_items`
   );
+  const items = allItems.filter(i => i.orderId === order.id);
 
   const response: Order = {
     id: order.id,
@@ -46,13 +46,12 @@ ordersRouter.post("/", async (req: Request, res: Response) => {
     items: Array<{ productId: string; name: string; quantity: number; unitPrice: number }>;
   };
 
-  const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const orderId = uuidv4();
 
   await query(
     `INSERT INTO orders (id, customer_id, total_amount, status)
      VALUES ($1, $2, $3, 'AWAITING_PAYMENT')`,
-    [orderId, customerId, totalAmount]
+    [orderId, customerId, 0]
   );
 
   for (const item of items) {
@@ -63,11 +62,21 @@ ordersRouter.post("/", async (req: Request, res: Response) => {
     );
   }
 
+  const [{ totalAmount }] = await query<{ totalAmount: string }>(
+    `SELECT COALESCE(SUM(quantity * unit_price), 0) as "totalAmount" FROM order_items WHERE order_id = $1`,
+    [orderId]
+  );
+
+  await query(
+    `UPDATE orders SET total_amount = $1 WHERE id = $2`,
+    [parseFloat(totalAmount), orderId]
+  );
+
   const event: OrderCreatedEvent = {
     eventType: "order.created",
     orderId,
     customerId,
-    totalAmount,
+    totalAmount: parseFloat(totalAmount),
     items: items.map(i => ({
       productId: i.productId,
       name: i.name,
